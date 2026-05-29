@@ -96,22 +96,30 @@ echo ">> booting throwaway FreeBSD VM (box: ${BOX})"
 scp_in()  { scp -q -F "${SSHCFG}" "$1" default:"$2"; }
 ssh_run() { ssh -F "${SSHCFG}" default "$@"; }
 
-echo ">> copying inputs into the VM"
-ssh_run 'mkdir -p /tmp/oai'
-scp_in "${SELF_DIR}/mkimage.sh"     /tmp/oai/mkimage.sh
-scp_in "${SELF_DIR}/autoinstall.sh" /tmp/oai/autoinstall.sh
-scp_in "${INPUT}"                   /tmp/oai/input.img
-MKARGS="-i /tmp/oai/input.img -o /tmp/oai/output.img -a /tmp/oai/autoinstall.sh -d ${DISK} -f ${FINAL}"
+# Stage under /var/tmp (disk-backed) rather than /tmp — on some boxes
+# /tmp is a RAM-backed tmpfs, and decompressing a multi-GB image plus
+# the output would OOM it.
+STAGE=/var/tmp/oai
+# Keep the input's basename so its extension (.bz2/.xz/.gz/.img)
+# survives — mkimage.sh decides whether to decompress from that.
+INPUT_REMOTE="${STAGE}/$(basename "${INPUT}")"
+
+echo ">> copying inputs into the VM (ferrying ${INPUT##*/} as-is — compressed if it is)"
+ssh_run "mkdir -p ${STAGE}"
+scp_in "${SELF_DIR}/mkimage.sh"     "${STAGE}/mkimage.sh"
+scp_in "${SELF_DIR}/autoinstall.sh" "${STAGE}/autoinstall.sh"
+scp_in "${INPUT}"                   "${INPUT_REMOTE}"
+MKARGS="-i ${INPUT_REMOTE} -o ${STAGE}/output.img -a ${STAGE}/autoinstall.sh -d ${DISK} -f ${FINAL}"
 [ -n "${SWAP}" ] && MKARGS="${MKARGS} -s ${SWAP}"
 if [ -n "${CONFIG}" ]; then
-	scp_in "${CONFIG}" /tmp/oai/config.xml
-	MKARGS="${MKARGS} -c /tmp/oai/config.xml"
+	scp_in "${CONFIG}" "${STAGE}/config.xml"
+	MKARGS="${MKARGS} -c ${STAGE}/config.xml"
 fi
 
 echo ">> running mkimage.sh inside the VM"
-ssh_run "cd /tmp/oai && sudo sh mkimage.sh ${MKARGS}"
+ssh_run "cd ${STAGE} && sudo sh mkimage.sh ${MKARGS}"
 
 echo ">> copying the finished image back to ${OUTPUT}"
-scp -q -F "${SSHCFG}" default:/tmp/oai/output.img "${OUTPUT}"
+scp -q -F "${SSHCFG}" "default:${STAGE}/output.img" "${OUTPUT}"
 
 echo ">> done: ${OUTPUT}"

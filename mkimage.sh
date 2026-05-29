@@ -24,7 +24,8 @@ usage() {
 	cat >&2 <<EOF
 Usage: $0 -i INPUT.img -o OUTPUT.img [options]
 
-  -i INPUT     stock OPNsense vga .img (decompressed; not .bz2)
+  -i INPUT     stock OPNsense vga image; .img, or compressed
+               .img.bz2 / .img.xz / .img.gz (decompressed in place)
   -o OUTPUT    path to write the customized image
   -c CONFIG    config.xml to install as the target's /conf/config.xml
                (optional; omit to leave OPNsense's default config)
@@ -61,8 +62,31 @@ done
 [ -r "${AUTOINSTALL}" ] || { echo "ERROR: autoinstall.sh not found at ${AUTOINSTALL}." >&2; exit 1; }
 [ -z "${CONFIG}" ] || [ -r "${CONFIG}" ] || { echo "ERROR: config ${CONFIG} not readable." >&2; exit 1; }
 
-echo ">> copying ${INPUT} -> ${OUTPUT}"
-cp "${INPUT}" "${OUTPUT}"
+# Materialize the working image at OUTPUT, decompressing if needed.
+# Accepting the compressed image directly matters for the Vagrant
+# wrapper: it ferries the small .bz2 into the VM (~5x less data over
+# the slow link) and decompresses here, rather than shipping the full
+# decompressed image across.
+case "${INPUT}" in
+*.bz2)
+	command -v bunzip2 >/dev/null 2>&1 || { echo "ERROR: bunzip2 not found." >&2; exit 1; }
+	echo ">> decompressing (bzip2) ${INPUT} -> ${OUTPUT}"
+	bunzip2 -c "${INPUT}" > "${OUTPUT}"
+	;;
+*.xz)
+	command -v xz >/dev/null 2>&1 || { echo "ERROR: xz not found." >&2; exit 1; }
+	echo ">> decompressing (xz) ${INPUT} -> ${OUTPUT}"
+	xz -dc "${INPUT}" > "${OUTPUT}"
+	;;
+*.gz)
+	echo ">> decompressing (gzip) ${INPUT} -> ${OUTPUT}"
+	gunzip -c "${INPUT}" > "${OUTPUT}"
+	;;
+*)
+	echo ">> copying ${INPUT} -> ${OUTPUT}"
+	cp "${INPUT}" "${OUTPUT}"
+	;;
+esac
 
 MD=$(mdconfig -a -t vnode -f "${OUTPUT}")
 echo ">> attached as /dev/${MD}"

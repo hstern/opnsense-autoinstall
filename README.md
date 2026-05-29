@@ -80,14 +80,14 @@ OPNsense box or a throwaway FreeBSD VM works fine).
 
 ```sh
 # 1. Get a stock OPNsense vga image (the raw disk image, not the DVD ISO —
-#    it has a writable UFS filesystem, so no ISO9660 repackaging).
+#    it has a writable UFS filesystem, so no ISO9660 repackaging). No need
+#    to decompress: mkimage.sh takes the .bz2 (or .xz/.gz) directly.
 fetch https://pkg.opnsense.org/releases/26.1.6/OPNsense-26.1.6-vga-amd64.img.bz2
-bunzip2 OPNsense-26.1.6-vga-amd64.img.bz2
 
 # 2. Build an unattended installer image (run on FreeBSD, as root).
 #    -c is optional; omit it to install OPNsense with its default config.
 ./mkimage.sh \
-    -i OPNsense-26.1.6-vga-amd64.img \
+    -i OPNsense-26.1.6-vga-amd64.img.bz2 \
     -o opnsense-unattended.img \
     -c examples/config.xml \
     -d auto \
@@ -108,10 +108,13 @@ flags as `mkimage.sh`:
 
 ```sh
 ./mkimage-vagrant.sh \
-    -i OPNsense-26.1.6-vga-amd64.img \
+    -i OPNsense-26.1.6-vga-amd64.img.bz2 \
     -o opnsense-unattended.img \
     -c examples/config.xml -s 8G
 ```
+
+It ferries the **compressed** image into the VM (≈5× less than the
+decompressed image over the slow link) and decompresses inside.
 
 Needs `vagrant` + a provider (VirtualBox is the cross-platform default;
 on Apple Silicon use the qemu/utm provider, or run `mkimage.sh` on a
