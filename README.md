@@ -158,12 +158,18 @@ htpasswd -bnBC 10 "" 'your-password' | tr -d ':\n'
 
 ## Boot trigger
 
-`mkimage.sh` installs the headless installer as `/etc/rc.local` on the
-live image, which runs late in multi-user startup. If a given OPNsense
-release doesn't honor `rc.local` on the live image, the alternative is
-to repoint the console autologin at `opnsense-autoinstall` instead of
-`opnsense-installer`. (Confirming the most robust trigger across releases
-is on the TODO list — see below.)
+`mkimage.sh` repoints **`ttyv0` in `/etc/ttys`** at `opnsense-autoinstall`.
+The second field of a `ttys` line is the command `init` runs for that
+terminal (normally `getty`); pointing it at our script makes `init` run
+the installer directly as root on the console — no login, no getty. On
+success the script reboots (init never respawns it); on failure init
+respawns it with backoff, so it retries.
+
+This replaced an earlier `/etc/rc.local` approach, which **does not work**:
+OPNsense's live image uses its own `rc` and never runs `/etc/rc.local`
+(the image boots straight to the live login prompt). The `ttys` hook is
+reliable because `init` honors `/etc/ttys` regardless of OPNsense's rc
+customization.
 
 ## Caveats / TODO
 
@@ -172,8 +178,8 @@ is on the TODO list — see below.)
 - **`mkimage.sh` requires FreeBSD** (UFS r/w mount). `mkimage-vagrant.sh`
   covers Linux/macOS/Windows by borrowing a throwaway FreeBSD VM; a
   native userspace-UFS path (no VM) would be nicer still — PRs welcome.
-- **Boot trigger robustness** across OPNsense releases (rc.local vs.
-  autologin replacement) needs confirming.
+- **Boot trigger** is the `ttyv0`/`/etc/ttys` hook (rc.local doesn't
+  fire on the live image). Verified to reach the console on 26.1.
 - **ZFS** target layout isn't wired yet (only UFS); `opnsense-zfs`
   follows the same pattern.
 - Tested against OPNsense **26.1**. Earlier/later releases shift the

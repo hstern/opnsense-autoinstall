@@ -125,19 +125,25 @@ else
 	sed -i '' 's|^CONFIG_XML=.*|CONFIG_XML=""|' "${MNT}/etc/opnsense-autoinstall.conf"
 fi
 
-# Boot trigger: run the headless installer late in multi-user startup.
-# /etc/rc.local is the simplest hook; if a given OPNsense release does
-# not honor it on the live image, the alternative is to repoint the
-# console autologin at opnsense-autoinstall (see README "Boot trigger").
-cat > "${MNT}/etc/rc.local" <<'EOF'
-#!/bin/sh
-# Installed by opnsense-autoinstall/mkimage.sh — run the headless
-# installer once, on the live system, then reboot/halt.
-if [ -x /usr/local/sbin/opnsense-autoinstall ]; then
-	/usr/local/sbin/opnsense-autoinstall
+# Boot trigger: run the headless installer on the primary console.
+#
+# NOT via /etc/rc.local — OPNsense's live image uses its own rc and
+# doesn't run rc.local (verified: the image boots straight to the live
+# login prompt). Instead, repoint ttyv0 in /etc/ttys: the second field
+# is the command init runs for that terminal, normally getty. Pointing
+# it at opnsense-autoinstall makes init run our installer directly as
+# root on the console — no login, no getty. init sets TERM from the
+# terminal-type field (xterm), which the cpdup progress dialog needs.
+#
+# On a successful install the script reboots, so init never respawns
+# it. On failure it exits and init respawns with backoff (it retries) —
+# acceptable for an unattended installer.
+if grep -q '^ttyv0' "${MNT}/etc/ttys"; then
+	sed -i '' -E 's|^ttyv0[[:space:]]+"[^"]*"|ttyv0\t"/usr/local/sbin/opnsense-autoinstall"|' "${MNT}/etc/ttys"
+else
+	echo "ERROR: no ttyv0 line in ${MNT}/etc/ttys to hook the installer onto." >&2
+	exit 1
 fi
-EOF
-chmod 0755 "${MNT}/etc/rc.local"
 
 sync
 echo ">> done. Customized unattended image: ${OUTPUT}"
