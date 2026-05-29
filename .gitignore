@@ -1,0 +1,13 @@
+# Images — never commit multi-GB OPNsense media or built artifacts
+*.img
+*.iso
+*.img.bz2
+*.iso.bz2
+*.img.xz
+
+# Local scratch
+*.tmp
+.DS_Store
+
+# JetBrains
+.idea/

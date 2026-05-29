@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<!--
+  Minimal example OPNsense config.xml for unattended install.
+
+  This is a STARTING POINT, not a drop-in: at minimum change the root
+  password hash, and set interfaces to match your hardware/VM NICs.
+
+  Key gotchas baked in here so you don't hit them:
+
+  * The <user> root is in <groupname>admins</groupname>, and the
+    <group> admins carries <priv>page-all</priv>. Without both, the
+    WebGUI login succeeds but has no privileges and silently rejects
+    you. WebGUI auth keys off these blocks, NOT /etc/master.passwd.
+
+  * <password> is a bcrypt hash. The default below is the hash of the
+    string "opnsense" — CHANGE IT. Generate a new one with:
+        htpasswd -bnBC 10 "" 'your-password' | tr -d ':\n'
+
+  * Interfaces: 'wan' (DHCP) + 'lan' (static 192.168.1.1/24) is the
+    OPNsense default shape. The <if> values (em0/vtnet0/igb0/...) must
+    match the NICs the install actually sees.
+-->
+<opnsense>
+  <theme>opnsense</theme>
+  <system>
+    <hostname>opnsense</hostname>
+    <domain>localdomain</domain>
+    <timezone>Etc/UTC</timezone>
+    <timeservers>pool.ntp.org</timeservers>
+    <language>en_US</language>
+    <dnsallowoverride>1</dnsallowoverride>
+    <webgui>
+      <protocol>https</protocol>
+    </webgui>
+    <ssh>
+      <enabled>enabled</enabled>
+      <permitrootlogin>1</permitrootlogin>
+    </ssh>
+    <group>
+      <name>admins</name>
+      <description>System Administrators</description>
+      <scope>system</scope>
+      <gid>1999</gid>
+      <member>0</member>
+      <priv>page-all</priv>
+    </group>
+    <user>
+      <name>root</name>
+      <descr>System Administrator</descr>
+      <scope>system</scope>
+      <groupname>admins</groupname>
+      <!-- bcrypt of "opnsense" — CHANGE THIS -->
+      <password>$2y$10$AXPAitUL23/GgSVvMmbfdOChAydrI2YXdZ8/TuCHXngdkAZmHUR2W</password>
+      <uid>0</uid>
+    </user>
+  </system>
+  <interfaces>
+    <wan>
+      <enable>1</enable>
+      <if>vtnet0</if>
+      <ipaddr>dhcp</ipaddr>
+      <blockpriv>1</blockpriv>
+      <blockbogons>1</blockbogons>
+    </wan>
+    <lan>
+      <enable>1</enable>
+      <if>vtnet1</if>
+      <ipaddr>192.168.1.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+  </interfaces>
+</opnsense>
