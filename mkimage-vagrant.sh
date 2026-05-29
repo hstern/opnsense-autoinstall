@@ -119,7 +119,17 @@ fi
 echo ">> running mkimage.sh inside the VM"
 ssh_run "cd ${STAGE} && sudo sh mkimage.sh ${MKARGS}"
 
+# Compress the output in the VM before copying back. The customized
+# image is mostly empty space (the cloned OS + a few tiny injected
+# files), so bzip2 shrinks it dramatically — turning the slow
+# multi-GB copy-back over the NAT link into a small one.
+echo ">> compressing output in the VM (bzip2)"
+ssh_run "bzip2 -f ${STAGE}/output.img"
+
 echo ">> copying the finished image back to ${OUTPUT}"
-scp -q -F "${SSHCFG}" "default:${STAGE}/output.img" "${OUTPUT}"
+scp -q -F "${SSHCFG}" "default:${STAGE}/output.img.bz2" "${OUTPUT}.bz2"
+
+echo ">> decompressing to ${OUTPUT}"
+bunzip2 -f "${OUTPUT}.bz2"
 
 echo ">> done: ${OUTPUT}"
