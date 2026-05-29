@@ -61,12 +61,35 @@ export DISTRIBUTIONS=               # nothing to extract; OPNsense clones the li
 export nonInteractive=YES
 
 # ---- 1. select target disk ------------------------------------------------
+# The disk the live system booted from must NOT be a target candidate —
+# auto-picking it would gpart-destroy the running installer. Resolve the
+# device backing / (through any GEOM label) down to its physical disk.
+boot_disk() {
+	rootprov=$(mount -p | awk '$2 == "/" { print $1; exit }' | sed 's|^/dev/||')
+	[ -n "${rootprov}" ] || return 0
+	# resolve a GEOM label (gpt/rootfs, ufsid/..., label/...) to its provider
+	real=$(glabel status 2>/dev/null | awk -v l="${rootprov}" '$1 == l { print $3; exit }')
+	[ -n "${real}" ] && rootprov="${real}"
+	# strip the partition/slice suffix to get the bare disk (vtbd0p4 -> vtbd0)
+	echo "${rootprov}" | sed -E 's/(p[0-9]+|s[0-9]+([a-h])?)$//'
+}
+
+BOOT_DISK=$(boot_disk)
+
 if [ "${TARGET_DISK}" = "auto" ]; then
-	TARGET_DISK=$(sysctl -n kern.disks | awk '{ print $1 }')
-	[ -n "${TARGET_DISK}" ] || die "no disks found (kern.disks empty)"
+	log "live system booted from: ${BOOT_DISK:-unknown} (excluded from auto-select)"
+	TARGET_DISK=
+	for d in $(sysctl -n kern.disks); do
+		[ "${d}" = "${BOOT_DISK}" ] && continue
+		TARGET_DISK=${d}
+		break
+	done
+	[ -n "${TARGET_DISK}" ] || die "auto: no target disk other than the boot disk (${BOOT_DISK:-?}); set TARGET_DISK explicitly"
 	log "auto-selected target disk: ${TARGET_DISK}"
 fi
 [ -e "/dev/${TARGET_DISK}" ] || die "target disk /dev/${TARGET_DISK} not found"
+# Never install onto the disk we're running from, even if set explicitly.
+[ "${TARGET_DISK}" = "${BOOT_DISK}" ] && die "refusing to install onto the live/boot disk (${TARGET_DISK})"
 
 # ---- 2. partition (mirrors /usr/libexec/bsdinstall/opnsense-ufs) ----------
 # GPT: EFI system partition + freebsd-boot + freebsd-ufs root (+ optional
