@@ -158,18 +158,25 @@ htpasswd -bnBC 10 "" 'your-password' | tr -d ':\n'
 
 ## Boot trigger
 
-`mkimage.sh` repoints **`ttyv0` in `/etc/ttys`** at `opnsense-autoinstall`.
-The second field of a `ttys` line is the command `init` runs for that
-terminal (normally `getty`); pointing it at our script makes `init` run
-the installer directly as root on the console — no login, no getty. On
-success the script reboots (init never respawns it); on failure init
-respawns it with backoff, so it retries.
+`mkimage.sh` drops an **OPNsense "early" syshook** at
+`/usr/local/etc/rc.syshook.d/early/30-opnsense-autoinstall`. OPNsense's
+live `rc` runs the `early` hooks *before* the `livemode` handler sets up
+the live login (the bit that dynamically creates the `installer` user),
+so our installer fires ahead of any login prompt. If it fails, `rc` just
+continues on to the live login — a graceful fallback, no respawn loop.
 
-This replaced an earlier `/etc/rc.local` approach, which **does not work**:
-OPNsense's live image uses its own `rc` and never runs `/etc/rc.local`
-(the image boots straight to the live login prompt). The `ttys` hook is
-reliable because `init` honors `/etc/ttys` regardless of OPNsense's rc
-customization.
+Two earlier approaches that **don't work** on OPNsense, for the record:
+
+- `/etc/rc.local` — OPNsense's live `rc` never runs it; the image boots
+  straight to the login prompt.
+- editing `/etc/ttys` (point `ttyv0` at the installer) — OPNsense
+  regenerates the console config at boot, so the edit doesn't stick.
+
+The syshook is reliable because OPNsense's own `rc` is what runs it.
+Because the hook + `autoinstall.sh` get cloned onto the target during
+install, they're present on the installed system too — `autoinstall.sh`
+no-ops there by detecting a writable root (installed) vs a read-only
+root (live media), the same signal OPNsense itself uses.
 
 ## Caveats / TODO
 
@@ -178,8 +185,8 @@ customization.
 - **`mkimage.sh` requires FreeBSD** (UFS r/w mount). `mkimage-vagrant.sh`
   covers Linux/macOS/Windows by borrowing a throwaway FreeBSD VM; a
   native userspace-UFS path (no VM) would be nicer still — PRs welcome.
-- **Boot trigger** is the `ttyv0`/`/etc/ttys` hook (rc.local doesn't
-  fire on the live image). Verified to reach the console on 26.1.
+- **Boot trigger** is the OPNsense `early` syshook (rc.local and
+  /etc/ttys both fail on the live image — see "Boot trigger").
 - **ZFS** target layout isn't wired yet (only UFS); `opnsense-zfs`
   follows the same pattern.
 - Tested against OPNsense **26.1**. Earlier/later releases shift the

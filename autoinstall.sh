@@ -54,11 +54,26 @@ die() { log "FATAL: $*"; exit 1; }
 
 [ "$(id -u)" = "0" ] || die "must run as root"
 
+# Only act on live install media — never on an installed system. The
+# live filesystem (this script + its syshook) gets cloned to the target,
+# so the trigger is present on the installed system too; without this
+# guard it would try to reinstall on every boot. OPNsense itself equates
+# "/ is writable" with "not a live media boot", so we use the same test.
+_wt="/.oai-writetest.$$"
+if ( : > "${_wt}" ) 2>/dev/null; then
+	rm -f "${_wt}"
+	log "/ is writable — this is an installed system, not live media; nothing to do."
+	exit 0
+fi
+
 # bsdinstall sub-commands read these.
 export BSDINSTALL_KEYMAP_DONE=1     # skip the keymap dialog
 export WORKAROUND_HYBRID=1          # GPT/UEFI hybrid boot, as the UFS path sets
 export DISTRIBUTIONS=               # nothing to extract; OPNsense clones the live FS
 export nonInteractive=YES
+# opnsense-install's cpdup progress uses dialog(1), which needs a
+# terminal type. The rc/syshook context this runs in doesn't set one.
+export TERM="${TERM:-xterm}"
 
 # ---- 1. select target disk ------------------------------------------------
 # The disk the live system booted from must NOT be a target candidate —
